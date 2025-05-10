@@ -13,9 +13,16 @@ app = Flask(__name__)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Cargar credenciales de Dialogflow desde variable de entorno JSON
-service_account_info = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+service_account_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+service_account_info = json.loads(service_account_json)
+
+# Corregir el formato del private_key reemplazando '\n' por saltos reales
+service_account_info["private_key"] = service_account_info["private_key"].replace("\\n", "\n")
+
+# Crear las credenciales de Dialogflow
 dialogflow_credentials = service_account.Credentials.from_service_account_info(service_account_info)
 dialogflow_client = dialogflow.SessionsClient(credentials=dialogflow_credentials)
+
 project_id = os.getenv("DIALOGFLOW_PROJECT_ID")
 session_id = "unique-session-id"
 
@@ -40,16 +47,12 @@ def webhook():
             reply = dialogflow_response
         else:
             # Si Dialogflow no responde, usar OpenAI (ChatGPT)
-            print("Dialogflow no respondió, utilizando OpenAI...")
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{
-                    "role": "system", 
-                    "content": "Eres un experto en historia de Costa Rica."
-                },{
-                    "role": "user", 
-                    "content": user_message
-                }]
+                messages=[
+                    {"role": "system", "content": "Eres un experto en historia de Costa Rica."},
+                    {"role": "user", "content": user_message}
+                ]
             )
             reply = response.choices[0].message.content.strip()
 
@@ -72,18 +75,12 @@ def query_dialogflow(text):
         text_input = dialogflow.TextInput(text=text, language_code="es")
         query_input = dialogflow.QueryInput(text=text_input)
 
-        # Realizar consulta de intent en Dialogflow
         response = dialogflow_client.detect_intent(session=session, query_input=query_input)
-        
-        # Log de respuesta de Dialogflow
-        print(f"Dialogflow Response: {response.query_result}")
 
         # Si Dialogflow tiene una respuesta, devolverla
         if response.query_result.fulfillment_text:
-            print(f"Intent detectado: {response.query_result.intent.display_name}")
             return response.query_result.fulfillment_text
         else:
-            print("Dialogflow no tiene respuesta para este mensaje.")
             return None
     except Exception as e:
         print(f"❌ Error en Dialogflow: {e}")
