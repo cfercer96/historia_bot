@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, Response
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
+from twilio.twiml.messaging_response import MessagingResponse
 
 load_dotenv()
 
@@ -11,14 +12,13 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
-        # Extraer mensaje del cuerpo x-www-form-urlencoded
+        # Extraer mensaje del cuerpo x-www-form-urlencoded (como Twilio lo manda)
         user_message = request.form.get("Body", "").strip()
         sender = request.form.get("From", "")
 
         print("📨 MENSAJE:", user_message)
         print("👤 DE:", sender)
 
-        # Verifica si hay mensaje
         if not user_message:
             return "No message received", 400
 
@@ -34,8 +34,11 @@ def webhook():
         reply = response.choices[0].message.content.strip()
         print("🤖 RESPUESTA:", reply)
 
-        # Retorna respuesta simple para Twilio
-        return reply, 200
+        # Crear respuesta en formato TwiML (XML que Twilio espera)
+        twilio_response = MessagingResponse()
+        twilio_response.message(reply)
+
+        return Response(str(twilio_response), mimetype="application/xml")
 
     except Exception as e:
         print("❌ ERROR:", str(e))
