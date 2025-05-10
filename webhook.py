@@ -4,22 +4,26 @@ import os
 
 app = Flask(__name__)
 
-# Carga la API Key desde variables de entorno
+# Carga tu API Key desde variables de entorno
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    req = request.get_json()
+    # Verificamos si el contenido es JSON
+    if not request.is_json:
+        return jsonify({'fulfillmentText': 'Formato no soportado. Se esperaba JSON.'}), 415
 
-    # Extrae el texto del usuario desde Dialogflow
-    user_message = req.get('queryResult', {}).get('queryText', '')
+    req = request.get_json(silent=True)
 
-    if not user_message:
-        return jsonify({'fulfillmentText': "No se recibió mensaje válido."})
+    # Validación básica del contenido
+    if not req or 'queryResult' not in req:
+        return jsonify({'fulfillmentText': 'Estructura del mensaje no válida.'}), 400
+
+    user_message = req['queryResult'].get('queryText', '')
 
     try:
-        # Llamada a OpenAI (GPT-3.5)
-        completion = openai.ChatCompletion.create(
+        # Llamada a OpenAI
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "Eres un experto en historia de Costa Rica."},
@@ -27,17 +31,16 @@ def webhook():
             ]
         )
 
-        reply = completion.choices[0].message.content.strip()
+        reply = response['choices'][0]['message']['content'].strip()
 
-        # Enviar respuesta a Dialogflow
         return jsonify({'fulfillmentText': reply})
 
     except Exception as e:
         print("Error:", e)
-        return jsonify({'fulfillmentText': "Ocurrió un error al generar la respuesta."})
+        return jsonify({'fulfillmentText': 'Hubo un error al generar la respuesta.'}), 500
 
 
-# Configuración para Render (0.0.0.0 y puerto dinámico)
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
