@@ -1,20 +1,28 @@
 from flask import Flask, request, Response
 from openai import OpenAI
 import os
-import requests
 from dotenv import load_dotenv
 from twilio.twiml.messaging_response import MessagingResponse
+from google.cloud import dialogflow_v2 as dialogflow
+from google.oauth2 import service_account
 
 load_dotenv()
 
 app = Flask(__name__)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-DIALOGFLOW_URL = os.getenv("DIALOGFLOW_WEBHOOK_URL")  # Asegúrate de definir esto en tu .env
+# Configura el cliente de Dialogflow
+dialogflow_credentials = service_account.Credentials.from_service_account_file(
+    os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+)
+dialogflow_client = dialogflow.SessionsClient(credentials=dialogflow_credentials)
+project_id = os.getenv("DIALOGFLOW_PROJECT_ID")
+session_id = "unique-session-id"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
+        # Extraer mensaje del cuerpo x-www-form-urlencoded (como Twilio lo manda)
         user_message = request.form.get("Body", "").strip()
         sender = request.form.get("From", "")
 
@@ -24,59 +32,53 @@ def webhook():
         if not user_message:
             return "No message received", 400
 
-        # Enviar a Dialogflow
-        dialogflow_payload = {
-            "queryInput": {
-                "text": {
-                    "text": user_message,
-                    "languageCode": "es"
-                }
-            },
-            "queryParams": {
-                "timeZone": "America/Costa_Rica"
-            }
-        }
+        # Llamada a Dialogflow
+        dialogflow_response = query_dialogflow(user_message)
 
-        dialogflow_headers = {
-            "Content-Type": "application/json"
-        }
-
-        dialogflow_response = requests.post(
-            DIALOGFLOW_URL,
-            json=dialogflow_payload,
-            headers=dialogflow_headers
-        )
-
-        reply_text = None
-        if dialogflow_response.status_code == 200:
-            data = dialogflow_response.json()
-            fulfillment = data.get("fulfillmentText")
-            if fulfillment and "no tengo una respuesta" not in fulfillment.lower():
-                reply_text = fulfillment
-
-        # Si Dialogflow no responde adecuadamente, usar OpenAI
-        if not reply_text:
-            openai_response = client.chat.completions.create(
+        # Si Dialogflow responde, usar esa respuesta
+        if dialogflow_response:
+            reply = dialogflow_response
+        else:
+            # Si Dialogflow no responde, usar OpenAI (ChatGPT)
+            response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "Eres un experto en historia de Costa Rica."},
                     {"role": "user", "content": user_message}
                 ]
             )
-            reply_text = openai_response.choices[0].message.content.strip()
+            reply = response.choices[0].message.content.strip()
 
-        print("🤖 RESPUESTA:", reply_text)
+        print("🤖 RESPUESTA:", reply)
 
-        # Formato Twilio
+        # Crear respuesta en formato TwiML (XML que Twilio espera)
         twilio_response = MessagingResponse()
-        twilio_response.message(reply_text)
+        twilio_response.message(reply)
+
         return Response(str(twilio_response), mimetype="application/xml")
 
     except Exception as e:
         print("❌ ERROR:", str(e))
         return "Internal Server Error", 500
 
+# Función para consultar Dialogflow
+def query_dialogflow(text):
+    try:
+        session = dialogflow_client.session_path(project_id, session_id)
+        text_input = dialogflow.TextInput(text=text, language_code="es")
+        query_input = dialogflow.QueryInput(text=text_input)
+
+        response = dialogflow_client.detect_intent(session=session, query_input=query_input)
+        
+        # Si Dialogflow tiene una respuesta, devolverla
+        if response.query_result.fulfillment_text:
+            return response.query_result.fulfillment_text
+        else:
+            return None
+    except Exception as e:
+        print(f"❌ Error en Dialogflow: {e}")
+        return None
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-
