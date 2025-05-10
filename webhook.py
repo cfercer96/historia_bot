@@ -13,18 +13,17 @@ app = Flask(__name__)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Cargar credenciales de Dialogflow desde variable de entorno JSON
-service_account_info = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+service_account_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+service_account_info = json.loads(service_account_json)
 dialogflow_credentials = service_account.Credentials.from_service_account_info(service_account_info)
 dialogflow_client = dialogflow.SessionsClient(credentials=dialogflow_credentials)
 project_id = os.getenv("DIALOGFLOW_PROJECT_ID")
-session_id = "unique-session-id"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
-        # Extraer mensaje del cuerpo x-www-form-urlencoded (como Twilio lo manda)
         user_message = request.form.get("Body", "").strip()
-        sender = request.form.get("From", "")
+        sender = request.form.get("From", "").strip()
 
         print("📨 MENSAJE:", user_message)
         print("👤 DE:", sender)
@@ -32,8 +31,11 @@ def webhook():
         if not user_message:
             return "No message received", 400
 
+        # Usar el número del remitente como session_id para mantener contexto por usuario
+        session_id = sender.replace("whatsapp:", "").replace("+", "")
+
         # Llamada a Dialogflow
-        dialogflow_response = query_dialogflow(user_message)
+        dialogflow_response = query_dialogflow(user_message, session_id)
 
         # Si Dialogflow responde, usar esa respuesta
         if dialogflow_response:
@@ -51,7 +53,7 @@ def webhook():
 
         print("🤖 RESPUESTA:", reply)
 
-        # Crear respuesta en formato TwiML (XML que Twilio espera)
+        # Crear respuesta en formato TwiML
         twilio_response = MessagingResponse()
         twilio_response.message(reply)
 
@@ -62,7 +64,7 @@ def webhook():
         return "Internal Server Error", 500
 
 # Función para consultar Dialogflow
-def query_dialogflow(text):
+def query_dialogflow(text, session_id):
     try:
         session = dialogflow_client.session_path(project_id, session_id)
         text_input = dialogflow.TextInput(text=text, language_code="es")
@@ -70,7 +72,6 @@ def query_dialogflow(text):
 
         response = dialogflow_client.detect_intent(session=session, query_input=query_input)
         
-        # Si Dialogflow tiene una respuesta, devolverla
         if response.query_result.fulfillment_text:
             return response.query_result.fulfillment_text
         else:
@@ -82,4 +83,3 @@ def query_dialogflow(text):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-
