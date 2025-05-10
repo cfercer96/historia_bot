@@ -5,16 +5,16 @@ from dotenv import load_dotenv
 from twilio.twiml.messaging_response import MessagingResponse
 from google.cloud import dialogflow_v2 as dialogflow
 from google.oauth2 import service_account
+import json
 
 load_dotenv()
 
 app = Flask(__name__)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Configura el cliente de Dialogflow
-dialogflow_credentials = service_account.Credentials.from_service_account_file(
-    os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-)
+# Cargar credenciales de Dialogflow desde variable de entorno JSON
+service_account_info = json.loads(os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"])
+dialogflow_credentials = service_account.Credentials.from_service_account_info(service_account_info)
 dialogflow_client = dialogflow.SessionsClient(credentials=dialogflow_credentials)
 project_id = os.getenv("DIALOGFLOW_PROJECT_ID")
 session_id = "unique-session-id"
@@ -82,3 +82,4 @@ def query_dialogflow(text):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
