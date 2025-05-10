@@ -44,13 +44,17 @@ def webhook():
 
         # Si Dialogflow responde, usar esa respuesta
         if dialogflow_response:
+            print("🔍 Respuesta desde Dialogflow:", dialogflow_response)  # Para depuración
             reply = dialogflow_response
         else:
             # Si Dialogflow no responde, usar OpenAI (ChatGPT)
+            print("📝 Usando ChatGPT para respuesta")
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "system", "content": "Eres un experto en historia de Costa Rica."},
-                          {"role": "user", "content": user_message}]
+                messages=[
+                    {"role": "system", "content": "Eres un experto en historia de Costa Rica."},
+                    {"role": "user", "content": user_message}
+                ]
             )
             reply = response.choices[0].message.content.strip()
 
@@ -73,12 +77,14 @@ def query_dialogflow(text):
         text_input = dialogflow.TextInput(text=text, language_code="es")
         query_input = dialogflow.QueryInput(text=text_input)
 
+        # Realizar la consulta a Dialogflow
         response = dialogflow_client.detect_intent(session=session, query_input=query_input)
 
-        # Si Dialogflow tiene una respuesta, devolverla
+        # Verificar si se obtuvo una respuesta válida desde Dialogflow
         if response.query_result.fulfillment_text:
             return response.query_result.fulfillment_text
         else:
+            print("🔴 No se encontró una respuesta de Dialogflow")
             return None
     except Exception as e:
         print(f"❌ Error en Dialogflow: {e}")
@@ -87,3 +93,4 @@ def query_dialogflow(text):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
