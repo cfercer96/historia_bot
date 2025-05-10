@@ -49,10 +49,8 @@ def webhook():
             # Si Dialogflow no responde, usar OpenAI (ChatGPT)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "Eres un experto en historia de Costa Rica."},
-                    {"role": "user", "content": user_message}
-                ]
+                messages=[{"role": "system", "content": "Eres un experto en historia de Costa Rica."},
+                          {"role": "user", "content": user_message}]
             )
             reply = response.choices[0].message.content.strip()
 
