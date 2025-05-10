@@ -4,32 +4,40 @@ import os
 
 app = Flask(__name__)
 
-# Cargar tu API key de OpenAI desde variable de entorno
+# Carga la API Key desde variables de entorno
 openai.api_key = os.getenv("OPENAI_API_KEY")
-
-@app.route('/', methods=['GET'])
-def home():
-    return "Webhook para WhatsApp + Dialogflow + ChatGPT activo."
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     req = request.get_json()
 
-    # Extrae la pregunta del intent de Dialogflow
-    user_query = req.get("queryResult", {}).get("queryText", "")
-    
-    # Procesa con ChatGPT
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": user_query}]
-    )
-    
-    answer = response['choices'][0]['message']['content']
+    # Extrae el texto del usuario desde Dialogflow
+    user_message = req.get('queryResult', {}).get('queryText', '')
 
-    # Responde a Dialogflow
-    return jsonify({
-        "fulfillmentText": answer
-    })
+    if not user_message:
+        return jsonify({'fulfillmentText': "No se recibió mensaje válido."})
 
+    try:
+        # Llamada a OpenAI (GPT-3.5)
+        completion = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "Eres un experto en historia de Costa Rica."},
+                {"role": "user", "content": user_message}
+            ]
+        )
+
+        reply = completion.choices[0].message.content.strip()
+
+        # Enviar respuesta a Dialogflow
+        return jsonify({'fulfillmentText': reply})
+
+    except Exception as e:
+        print("Error:", e)
+        return jsonify({'fulfillmentText': "Ocurrió un error al generar la respuesta."})
+
+
+# Configuración para Render (0.0.0.0 y puerto dinámico)
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
