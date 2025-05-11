@@ -82,12 +82,20 @@ def query_dialogflow(text, session_id):
         # Realizar la consulta a Dialogflow
         response = dialogflow_client.detect_intent(session=session, query_input=query_input)
 
-        # Verificar si hay fulfillment_text
+        print("✅ Intent detectado:", response.query_result.intent.display_name)
+        print("💬 fulfillment_text:", response.query_result.fulfillment_text)
+
+        # Primer intento: usar fulfillment_text
         if response.query_result.fulfillment_text:
             return response.query_result.fulfillment_text
-        else:
-            print("🔴 No se encontró una respuesta de Dialogflow")
-            return None
+
+        # Segundo intento: buscar en response_messages
+        for message in response.query_result.response_messages:
+            if message.text and message.text.text:
+                return message.text.text[0]
+
+        print("🔴 No se encontró texto de respuesta en fulfillment_text ni en response_messages.")
+        return None
     except Exception as e:
         print(f"❌ Error en Dialogflow: {e}")
         return None
