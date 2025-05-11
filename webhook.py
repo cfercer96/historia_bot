@@ -15,8 +15,6 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Cargar credenciales de Dialogflow desde variable de entorno JSON
 service_account_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
 service_account_info = json.loads(service_account_json)
-
-# Corregir el formato del private_key reemplazando '\n' por saltos reales
 service_account_info["private_key"] = service_account_info["private_key"].replace("\\n", "\n")
 
 # Crear las credenciales de Dialogflow
@@ -39,12 +37,12 @@ def webhook():
 
         session_id = sender.replace("whatsapp:", "")
 
-        # Llamada a Dialogflow
+        # Obtener intent y respuesta desde Dialogflow
         intent_name, dialogflow_response = query_dialogflow(user_message, session_id)
 
-        # Usar ChatGPT solo si no hay intent válido o respuesta
-        if intent_name == "Default Fallback Intent" or not dialogflow_response:
-            print("📝 Usando ChatGPT para respuesta", flush=True)
+        # Si no hay respuesta válida o el intent es genérico, usar ChatGPT
+        if not dialogflow_response or intent_name.startswith("Default"):
+            print("📝 No se detectó un intent relevante. Usando ChatGPT para respuesta", flush=True)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -73,7 +71,6 @@ def query_dialogflow(text, session_id):
         session = dialogflow_client.session_path(project_id, session_id)
         text_input = dialogflow.TextInput(text=text, language_code="es")
         query_input = dialogflow.QueryInput(text=text_input)
-
         response = dialogflow_client.detect_intent(session=session, query_input=query_input)
 
         intent_name = response.query_result.intent.display_name
@@ -91,7 +88,6 @@ def query_dialogflow(text, session_id):
 
         print("🔴 No se encontró texto de respuesta en fulfillment_text ni en response_messages.", flush=True)
         return intent_name, None
-
     except Exception as e:
         print(f"❌ Error en Dialogflow: {e}", flush=True)
         return "Default Fallback Intent", None
