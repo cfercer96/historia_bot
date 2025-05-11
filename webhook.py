@@ -31,6 +31,7 @@ def webhook():
         print("👤 DE:", sender, flush=True)
 
         if not user_message:
+            print("⚠️ Mensaje vacío recibido.", flush=True)
             return "No message received", 400
 
         session_id = sender.replace("whatsapp:", "")
@@ -42,10 +43,8 @@ def webhook():
             print("📝 Usando ChatGPT para respuesta", flush=True)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "Eres un experto en historia de Costa Rica."},
-                    {"role": "user", "content": user_message}
-                ]
+                messages=[{"role": "system", "content": "Eres un experto en historia de Costa Rica."},
+                          {"role": "user", "content": user_message}]
             )
             reply = response.choices[0].message.content.strip()
         else:
@@ -94,3 +93,4 @@ def query_dialogflow(text, session_id):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
