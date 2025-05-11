@@ -44,12 +44,8 @@ def webhook():
         # Llamada a Dialogflow
         dialogflow_response = query_dialogflow(user_message, session_id)
 
-        # Si Dialogflow responde, usar esa respuesta
-        if dialogflow_response:
-            print("🔍 Respuesta desde Dialogflow:", dialogflow_response)
-            reply = dialogflow_response
-        else:
-            # Si no, usar OpenAI
+        # Si Dialogflow responde con un mensaje vacío o no relevante, usar ChatGPT
+        if not dialogflow_response or dialogflow_response.strip() == "":
             print("📝 Usando ChatGPT para respuesta")
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
@@ -63,6 +59,9 @@ def webhook():
                 }]
             )
             reply = response.choices[0].message.content.strip()
+        else:
+            print("🔍 Respuesta desde Dialogflow:", dialogflow_response)
+            reply = dialogflow_response
 
         print("🤖 RESPUESTA:", reply)
 
@@ -89,11 +88,11 @@ def query_dialogflow(text, session_id):
         print("✅ Intent detectado:", response.query_result.intent.display_name)
         print("💬 fulfillment_text:", response.query_result.fulfillment_text)
 
-        # Primer intento: usar fulfillment_text
+        # Verificar si Dialogflow proporciona una respuesta válida
         if response.query_result.fulfillment_text:
             return response.query_result.fulfillment_text
 
-        # Segundo intento: buscar en response_messages
+        # Si no hay fulfillment_text, buscar en response_messages
         for message in response.query_result.response_messages:
             if message.text and message.text.text:
                 return message.text.text[0]
@@ -107,4 +106,3 @@ def query_dialogflow(text, session_id):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-
