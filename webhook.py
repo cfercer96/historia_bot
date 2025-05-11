@@ -44,14 +44,61 @@ def webhook():
         # Llamada a Dialogflow
         dialogflow_response = query_dialogflow(user_message, session_id)
 
-        # Si Dialogflow responde con algo válido, usar esa respuesta
+        # Verificar si Dialogflow dio una respuesta válida
         if dialogflow_response:
             print("🔍 Respuesta desde Dialogflow:", dialogflow_response)
             reply = dialogflow_response
         else:
-            # Si Dialogflow no tiene respuesta válida, usar OpenAI
+            # Si no hay respuesta válida desde Dialogflow, entonces usar ChatGPT
             print("📝 Usando ChatGPT para respuesta")
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages
+                messages=[{"role": "system", "content": "Eres un experto en historia de Costa Rica."},
+                          {"role": "user", "content": user_message}]
+            )
+            reply = response.choices[0].message.content.strip()
+
+        print("🤖 RESPUESTA:", reply)
+
+        # Crear respuesta en formato TwiML
+        twilio_response = MessagingResponse()
+        twilio_response.message(reply)
+
+        return Response(str(twilio_response), mimetype="application/xml")
+
+    except Exception as e:
+        print("❌ ERROR:", str(e))
+        return "Internal Server Error", 500
+
+# Función para consultar Dialogflow
+def query_dialogflow(text, session_id):
+    try:
+        session = dialogflow_client.session_path(project_id, session_id)
+        text_input = dialogflow.TextInput(text=text, language_code="es")
+        query_input = dialogflow.QueryInput(text=text_input)
+
+        # Realizar la consulta a Dialogflow
+        response = dialogflow_client.detect_intent(session=session, query_input=query_input)
+
+        print("✅ Intent detectado:", response.query_result.intent.display_name)
+        print("💬 fulfillment_text:", response.query_result.fulfillment_text)
+
+        # Usar fulfillment_text si existe una respuesta válida
+        if response.query_result.fulfillment_text:
+            return response.query_result.fulfillment_text
+
+        # Si no hay fulfillment_text, buscar en response_messages
+        for message in response.query_result.response_messages:
+            if message.text and message.text.text:
+                return message.text.text[0]
+
+        print("🔴 No se encontró texto de respuesta en fulfillment_text ni en response_messages.")
+        return None
+    except Exception as e:
+        print(f"❌ Error en Dialogflow: {e}")
+        return None
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
 
