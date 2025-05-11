@@ -28,9 +28,8 @@ project_id = os.getenv("DIALOGFLOW_PROJECT_ID")
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
-        # Extraer mensaje y número del remitente
         user_message = request.form.get("Body", "").strip()
-        sender = request.form.get("From", "").strip()  # Ej: "whatsapp:+50687354933"
+        sender = request.form.get("From", "").strip()
 
         print("📨 MENSAJE:", user_message, flush=True)
         print("👤 DE:", sender, flush=True)
@@ -38,26 +37,17 @@ def webhook():
         if not user_message:
             return "No message received", 400
 
-        # Usar el número como session_id (sin el prefijo "whatsapp:")
         session_id = sender.replace("whatsapp:", "")
-
-        # Llamada a Dialogflow
         dialogflow_response = query_dialogflow(user_message, session_id)
 
-        # Si Dialogflow no devuelve una respuesta relevante o hace match con un intent incorrecto
+        # Detecta si el intent detectado no es relevante y delega a ChatGPT
         if not dialogflow_response or "cultura" in dialogflow_response.lower():
             print("📝 No se detectó un intent relevante. Usando ChatGPT para respuesta", flush=True)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "Eres un experto en historia de Costa Rica."
-                    },
-                    {
-                        "role": "user",
-                        "content": user_message
-                    }
+                    {"role": "system", "content": "Eres un experto en historia de Costa Rica."},
+                    {"role": "user", "content": user_message}
                 ]
             )
             reply = response.choices[0].message.content.strip()
@@ -67,37 +57,30 @@ def webhook():
 
         print("🤖 RESPUESTA:", reply, flush=True)
 
-        # Crear respuesta en formato TwiML y retornarla correctamente
         twilio_response = MessagingResponse()
         twilio_response.message(reply)
-        xml_response = str(twilio_response)
 
-        print("📤 XML enviado a Twilio:", xml_response, flush=True)
-
-        return Response(xml_response, status=200, mimetype="application/xml")
+        print("📤 XML enviado a Twilio:", twilio_response.to_xml(), flush=True)
+        return Response(twilio_response.to_xml(), mimetype="text/xml")
 
     except Exception as e:
         print("❌ ERROR:", str(e), flush=True)
         return "Internal Server Error", 500
 
-# Función para consultar Dialogflow
 def query_dialogflow(text, session_id):
     try:
         session = dialogflow_client.session_path(project_id, session_id)
         text_input = dialogflow.TextInput(text=text, language_code="es")
         query_input = dialogflow.QueryInput(text=text_input)
 
-        # Realizar la consulta a Dialogflow
         response = dialogflow_client.detect_intent(session=session, query_input=query_input)
 
         print("✅ Intent detectado:", response.query_result.intent.display_name, flush=True)
         print("💬 fulfillment_text:", response.query_result.fulfillment_text, flush=True)
 
-        # Si Dialogflow devuelve fulfillment_text, usarlo
         if response.query_result.fulfillment_text:
             return response.query_result.fulfillment_text
 
-        # Si no hay fulfillment_text, buscar en response_messages
         for message in response.query_result.response_messages:
             if message.text and message.text.text:
                 return message.text.text[0]
@@ -111,3 +94,4 @@ def query_dialogflow(text, session_id):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
+
