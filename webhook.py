@@ -44,8 +44,8 @@ def webhook():
         # Llamada a Dialogflow
         dialogflow_response = query_dialogflow(user_message, session_id)
 
-        # Si Dialogflow no devuelve respuesta o no hace match con el intent
-        if not dialogflow_response:
+        # Si Dialogflow no devuelve una respuesta relevante o hace match con un intent incorrecto
+        if not dialogflow_response or "cultura" in dialogflow_response.lower():
             print("📝 No se detectó un intent relevante. Usando ChatGPT para respuesta", flush=True)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
