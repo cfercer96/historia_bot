@@ -6,6 +6,11 @@ from twilio.twiml.messaging_response import MessagingResponse
 from google.cloud import dialogflow_v2 as dialogflow
 from google.oauth2 import service_account
 import json
+import logging
+
+# Configurar logging para que los prints aparezcan en los logs de Render
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -15,8 +20,6 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Cargar credenciales de Dialogflow desde variable de entorno JSON
 service_account_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
 service_account_info = json.loads(service_account_json)
-
-# Corregir el formato del private_key reemplazando '\n' por saltos reales
 service_account_info["private_key"] = service_account_info["private_key"].replace("\\n", "\n")
 
 # Crear las credenciales de Dialogflow
@@ -28,29 +31,23 @@ project_id = os.getenv("DIALOGFLOW_PROJECT_ID")
 @app.route("/webhook", methods=["POST"])
 def webhook():
     try:
-        # Extraer mensaje y número del remitente
         user_message = request.form.get("Body", "").strip()
-        sender = request.form.get("From", "").strip()  # Ej: "whatsapp:+50687354933"
+        sender = request.form.get("From", "").strip()
 
-        print("📨 MENSAJE:", user_message, flush=True)
-        print("👤 DE:", sender, flush=True)
+        logger.info(f"📨 MENSAJE: {user_message}")
+        logger.info(f"👤 DE: {sender}")
 
         if not user_message:
             return "No message received", 400
 
-        # Usar el número como session_id (sin el prefijo "whatsapp:")
         session_id = sender.replace("whatsapp:", "")
-
-        # Llamada a Dialogflow
         dialogflow_response = query_dialogflow(user_message, session_id)
 
-        # Verificar si Dialogflow dio una respuesta válida
         if dialogflow_response:
-            print("🔍 Respuesta desde Dialogflow:", dialogflow_response, flush=True)
+            logger.info(f"🔍 Respuesta desde Dialogflow: {dialogflow_response}")
             reply = dialogflow_response
         else:
-            # Si no hay respuesta válida desde Dialogflow, entonces usar ChatGPT
-            print("📝 Usando ChatGPT para respuesta", flush=True)
+            logger.info("📝 Usando ChatGPT para respuesta")
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -60,16 +57,15 @@ def webhook():
             )
             reply = response.choices[0].message.content.strip()
 
-        print("🤖 RESPUESTA:", reply, flush=True)
+        logger.info(f"🤖 RESPUESTA: {reply}")
 
-        # Crear respuesta en formato TwiML
         twilio_response = MessagingResponse()
         twilio_response.message(reply)
 
         return Response(str(twilio_response), mimetype="application/xml")
 
     except Exception as e:
-        print("❌ ERROR:", str(e), flush=True)
+        logger.error(f"❌ ERROR en webhook: {str(e)}")
         return "Internal Server Error", 500
 
 # Función para consultar Dialogflow
@@ -78,29 +74,25 @@ def query_dialogflow(text, session_id):
         session = dialogflow_client.session_path(project_id, session_id)
         text_input = dialogflow.TextInput(text=text, language_code="es")
         query_input = dialogflow.QueryInput(text=text_input)
-
-        # Realizar la consulta a Dialogflow
         response = dialogflow_client.detect_intent(session=session, query_input=query_input)
 
-        print("✅ Intent detectado:", response.query_result.intent.display_name, flush=True)
-        print("💬 fulfillment_text:", response.query_result.fulfillment_text, flush=True)
+        intent = response.query_result.intent
+        fulfillment = response.query_result.fulfillment_text.strip() if response.query_result.fulfillment_text else ""
 
-        # Usar fulfillment_text si existe una respuesta válida
-        if response.query_result.fulfillment_text:
-            return response.query_result.fulfillment_text
+        logger.info(f"✅ Intent detectado: {intent.display_name}")
+        logger.info(f"💬 fulfillment_text: {fulfillment}")
 
-        # Si no hay fulfillment_text, buscar en response_messages
-        for message in response.query_result.response_messages:
-            if message.text and message.text.text:
-                return message.text.text[0]
+        # Si es fallback o no tiene respuesta, usar ChatGPT
+        if intent.is_fallback or not fulfillment:
+            logger.warning("⚠️ Intent sin respuesta útil. Usando ChatGPT.")
+            return None
 
-        print("🔴 No se encontró texto de respuesta en fulfillment_text ni en response_messages.", flush=True)
-        return None
+        return fulfillment
+
     except Exception as e:
-        print(f"❌ Error en Dialogflow: {e}", flush=True)
+        logger.error(f"❌ Error en Dialogflow: {e}")
         return None
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-
