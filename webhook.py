@@ -49,14 +49,16 @@ def webhook():
             print("📝 No se detectó un intent relevante. Usando ChatGPT para respuesta", flush=True)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{
-                    "role": "system", 
-                    "content": "Eres un experto en historia de Costa Rica."
-                },
-                {
-                    "role": "user", 
-                    "content": user_message
-                }]
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Eres un experto en historia de Costa Rica."
+                    },
+                    {
+                        "role": "user",
+                        "content": user_message
+                    }
+                ]
             )
             reply = response.choices[0].message.content.strip()
         else:
@@ -65,11 +67,14 @@ def webhook():
 
         print("🤖 RESPUESTA:", reply, flush=True)
 
-        # Crear respuesta en formato TwiML
+        # Crear respuesta en formato TwiML y retornarla correctamente
         twilio_response = MessagingResponse()
         twilio_response.message(reply)
+        xml_response = str(twilio_response)
 
-        return Response(str(twilio_response), mimetype="application/xml")
+        print("📤 XML enviado a Twilio:", xml_response, flush=True)
+
+        return Response(xml_response, status=200, mimetype="application/xml")
 
     except Exception as e:
         print("❌ ERROR:", str(e), flush=True)
